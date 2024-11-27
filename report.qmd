@@ -1,0 +1,376 @@
+---
+format:
+  html:
+    page-layout: full
+    embed-resources: true
+    grid:
+      body-width: 1200px
+    fontsize: 18pt
+  pdf: default
+echo: false
+warning: false
+toc: true
+jupyter: python3
+---
+
+::: {.content-hidden}
+### Import necessary libraries & load data
+:::
+
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pathlib import Path
+```
+
+```{python}
+file = Path("__file__").parent / "telco-customer-churn.csv"
+df = pd.read_csv(file)
+
+# plt.style.use('seaborn-v0_8-talk')
+```
+
+## Initial Data Exploration
+
+```{python}
+#| output: false
+df.info()
+```
+
+```{python}
+import itables
+
+itables.show(df.head(50))
+```
+
+### High-level overview of the data
+
+::: {layout-ncol=2}
+```{python}
+churn = df['Churn'].value_counts()
+plt.title('Count of Customer Churn')
+plt.bar(churn.index, churn.values)
+plt.show()
+```
+
+```{python}
+pct_churn = df['Churn'].value_counts(normalize=True)
+plt.pie(pct_churn, labels=pct_churn.index, autopct='%1.1f%%')
+plt.show()
+```
+:::
+
+## Understanding the data that causes churn
+
+### Numeric Features
+
+```{python}
+#| column: body-outset-left
+#| out-width: 100%
+#| fig-align: center
+#| width: 100%
+#| fig-caption: Distribution of numerical features
+numerical_features = ['tenure', 'MonthlyCharges', 'TotalCharges']
+fig, axes = plt.subplots(1, 3, figsize=(15, 5)) 
+for i, feature in enumerate(numerical_features):
+    if feature == 'TotalCharges':
+        df[feature] = pd.to_numeric(df[feature], errors='coerce')  # Convert to numeric
+    sns.histplot(data=df, x=feature, hue='Churn', multiple="stack", ax=axes[i])
+    axes[i].set_title(f'Distribution of {feature}')
+```
+
+The most likely customers to churn are ones that have been with the company for a short period of time, and have higher monthly charges.
+
+The more money someone has spent with us, the less likely they are to churn.
+
+***
+
+### Categorical Features
+
+::::: {layout="[30, 70]"}
+::: {#firstcolumn}
+
+In these bar charts we observe a few different insights
+
+- Gender has little to no impact on churn
+- Seniors are more likely to churn
+- Customers without partners or dependents are more likely to churn
+- Phone Service has little to no impact on churn
+- Customers with Fiber Optic Internet Service are significantly more likely to churn
+- Customers with Month-to-Month contracts are significantly more likely to churn
+:::
+::: {#secondcolumn}
+```{python}
+categorical_features = ['gender', 'SeniorCitizen', 'Partner', 'Dependents', 'PhoneService', 'InternetService', 'Contract']
+fig, axes = plt.subplots(7, 1, figsize=(8, 20))
+axes = axes.flatten()
+
+plt.rcParams.update({'font.size': 12})  # Increase base font size
+
+for i, feature in enumerate(categorical_features):
+    # Calculate percentages
+    percentages = (df.groupby(feature)['Churn']
+                    .value_counts(normalize=True)
+                    .unstack()
+                    .mul(100))
+    
+    # Create horizontal stacked bars
+    percentages.plot(kind='barh', 
+                    stacked=True,
+                    ax=axes[i],
+                    legend=False,
+                    width=0.6)  # Changed from height to width
+    
+    # Customize the plot
+    axes[i].set_title(f'Churn Distribution by {feature}', fontsize=14, pad=-30)
+    axes[i].set_ylabel(feature, fontsize=12)
+    
+    # Add percentage labels on the bars
+    for c in axes[i].containers:
+        axes[i].bar_label(c, fmt='%.1f%%', label_type='center', fontsize=11)
+    
+    # Remove x-axis percentage labels
+    axes[i].set_xticks([])
+    
+    # Add border around the subplot
+    for spine in axes[i].spines.values():
+        spine.set_visible(True)
+    
+    # Make tick labels larger
+    axes[i].tick_params(axis='both', which='major', labelsize=11)
+    
+    # Adjust plot to reduce white space
+    axes[i].margins(y=0.15)  # Reduce vertical margins
+
+# Remove empty subplots
+for j in range(i+1, len(axes)):
+    fig.delaxes(axes[j])
+
+plt.tight_layout()
+plt.show()
+```
+:::
+:::::
+
+
+### Why might internet service matter?
+
+::: {layout="[70, 30]"}
+```{python}
+
+plt.figure(figsize=(10, 6))
+sns.scatterplot(data=df, x='MonthlyCharges', y='TotalCharges', hue='InternetService')
+plt.title('Scatter plot of Monthly Charges based on Internet Service type')
+plt.xlabel('Monthly Charges')
+plt.ylabel('Total Charges')
+plt.show()
+```
+<br/>
+Customers with Fiber optic internet service have higher monthly charges. This could be a reason why they are more likely to churn.
+
+:::
+
+```{python}
+#| output: false
+plt.figure(figsize=(10, 6))
+sns.scatterplot(data=df, x='Contract', y='MonthlyCharges', hue='Contract')
+plt.title('Scatter plot of Monthly Charges based on Contract type')
+plt.xlabel('Contract Type')
+plt.ylabel('Monthly Charges')
+plt.show()
+```
+***
+
+### Looking at Churn by type of Contract
+As can be seen in the graphs below, customers with month-to-month contracts are significantly more likely to churn compared to customers with one or two year contracts. 
+
+Even when someone has been with the company for a long time, their relative percentages on a month-to-month contract are still higher than those on a one-year or two-year contract that has just started.
+
+::: {layout-ncol=3 .column-screen-inset}
+```{python}
+def plot_churn_by_tenure(data, contract_type):
+    # Create the bins
+    bins = np.arange(0, data['tenure'].max() + 2, 2)  # +2 to include the last value
+    data['tenure_bin'] = pd.cut(data['tenure'], bins=bins)
+    
+    # Calculate percentage of churned customers in each bin
+    churn_by_tenure = (data.groupby('tenure_bin')['Churn']
+                          .value_counts(normalize=True)
+                          .unstack())
+    
+    plt.figure(figsize=(12, 8))
+    churn_by_tenure['Yes'].multiply(100).plot(kind='bar')
+    plt.title(f'Percentage of Churned Customers by Tenure Length\n{contract_type} Contracts')
+    plt.xlabel('Tenure (months)')
+    plt.ylabel('Churn Percentage')
+    plt.axhline(y=50, color='r', linestyle='--', alpha=0.3)
+    plt.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+    
+    # Print statistics
+    # print(f"\nChurn percentage by tenure bins for {contract_type} contracts:")
+    # print(churn_by_tenure['Yes'].multiply(100).round(1))
+
+# Create three dataframes
+monthly = df[df['Contract'] == 'Month-to-month']
+one_year = df[df['Contract'] == 'One year']
+two_year = df[df['Contract'] == 'Two year']
+```
+
+```{python}
+plot_churn_by_tenure(monthly, 'Month-to-month')
+```
+
+```{python}
+plot_churn_by_tenure(one_year, 'One year')
+```
+
+```{python}
+plot_churn_by_tenure(two_year, 'Two year')  
+```
+:::
+
+
+***
+
+# Recommendations
+
+Based on our analysis, we have identified a few key areas that are driving churn:
+
+- **Tenure**: Customers who have been with the company for a short period of time are more likely to churn
+- **Monthly Charges**: Customers with higher monthly charges are more likely to churn
+- **Contract Type**: Customers with month-to-month contracts are significantly more likely to churn
+
+To reduce churn, we recommend the following:
+
+- **Promote longer contracts**: Encourage customers to sign up for longer contracts by offering discounts or other incentives
+- **Reduce monthly charges**: Consider offering lower-priced plans to customers who are at risk of churning
+- **Improve customer service**: Provide better customer service to customers who are at risk of churning to increase customer satisfaction. Spend more time with customers early on to help them understand the value of the service.
+
+Next steps from Alpha Consulting:
+
+- **Predictive modeling**: Build a predictive model to identify customers who are at risk of churning. This will allow us to take proactive steps to retain these customers.
+
+::: {.content-hidden}
+## Model building
+
+```{python}
+# Prep data
+
+# Convert columns to binary and create new lowercase columns
+df['gender_male'] = (df.gender=='Male')
+df['senior_citizen'] = (df.SeniorCitizen==1)
+df['partner'] = (df.Partner=='Yes')
+df['dependents'] = (df.Dependents=='Yes')
+df['phone_service'] = (df.PhoneService=='Yes')
+df['multiple_lines'] = (df.MultipleLines=='Yes')
+df['single_line'] = (df.MultipleLines=='No')
+
+df['fiber_optic'] = (df.InternetService=='Fiber optic')
+df['dsl'] = (df.InternetService=='DSL')
+
+df['online_security'] = (df.OnlineSecurity=='Yes')
+df['online_backup'] = (df.OnlineBackup=='Yes')
+df['device_protection'] = (df.DeviceProtection=='Yes')
+df['tech_support'] = (df.TechSupport=='Yes')
+df['streaming_tv'] = (df.StreamingTV=='Yes')
+df['streaming_movies'] = (df.StreamingMovies=='Yes')
+
+df['month_to_month'] = (df.Contract=='Month-to-month')
+df['one_year'] = (df.Contract=='One year')
+df['two_year'] = (df.Contract=='Two year')
+
+df['paperless_billing'] = (df.PaperlessBilling=='Yes')
+df['electronic_check'] = (df.PaymentMethod=='Electronic check')
+df['mailed_check'] = (df.PaymentMethod=='Mailed check')
+df['bank_transfer'] = (df.PaymentMethod=='Bank transfer (automatic)')
+df['credit_card'] = (df.PaymentMethod=='Credit card (automatic)')
+
+df["total_charges"] = pd.to_numeric(df.TotalCharges, errors='coerce').fillna(0)
+df['monthly_charges'] = df.MonthlyCharges
+df['tenure'] = df.tenure
+
+df['churn'] = (df.Churn=='Yes')
+
+# Drop all original columns
+columns_to_drop = ['customerID', 'gender', 'SeniorCitizen', 'Partner', 'Dependents',
+                  'PhoneService', 'MultipleLines', 'InternetService', 'OnlineSecurity',
+                  'OnlineBackup', 'DeviceProtection', 'TechSupport', 'StreamingTV',
+                  'StreamingMovies', 'Contract', 'PaperlessBilling', 'PaymentMethod',
+                  'TotalCharges', 'MonthlyCharges', 'Churn']
+
+df.drop(columns=columns_to_drop, inplace=True)
+```
+
+```{python}
+df.head()
+```
+
+```{python}
+df.info()
+```
+
+### Standardize numerical columns
+
+```{python}
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+
+# Create a StandardScaler instance
+scaler = StandardScaler()
+
+# Select the columns to standardize
+columns_to_scale = ['tenure', 'monthly_charges', 'total_charges']
+
+# Apply scaling to the selected columns
+df[columns_to_scale] = scaler.fit_transform(df[columns_to_scale])
+```
+
+```{python}
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from imblearn.over_sampling import SMOTE
+
+# Define features and target variable
+X = df.drop(columns=['churn'])
+# X = df.drop(columns=['churn'])
+
+y = df['churn']
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+## Balance the training data (roughly equal number of churned and non-churned customers)
+smote = SMOTE(random_state=42)
+X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
+
+# Create and train the logistic regression model
+model = LogisticRegression(max_iter=5000)
+# model = XGBClassifier(learning_rate=0.01,max_depth = 3,n_estimators = 1000)
+# model = RandomForestClassifier(max_depth=8, n_estimators=200, random_state=42)
+model.fit(X_resampled, y_resampled)
+
+# Make predictions
+y_pred_orig = model.predict(X_test)
+y_pred = model.predict_proba(X_test)
+
+# Play around with the ROC threshold
+y_pred = np.where(y_pred[:,0] < 0.70, 1, 0)
+
+print(y_pred_orig[0:10])
+
+# Evaluate the model
+print(confusion_matrix(y_test, y_pred))
+print(classification_report(y_test, y_pred))
+```
+
+:::
+
+
+
