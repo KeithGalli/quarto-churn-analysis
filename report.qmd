@@ -259,3 +259,7 @@ To reduce churn, we recommend the following:
 - **Promote longer contracts**: Encourage customers to sign up for longer contracts by offering discounts or other incentives
 - **Reduce monthly charges**: Consider offering lower-priced plans to customers who are at risk of churning
 - **Improve customer service**: Provide better customer service to customers who are at risk of churning to increase customer satisfaction. Spend more time with customers early on to help them understand the value of the service.
+
+Next steps from Alpha Consulting:
+
+- **Predictive modeling**: Build a predictive model to identify customers who are at risk of churning. This will allow us to take proactive steps to retain these customers.
