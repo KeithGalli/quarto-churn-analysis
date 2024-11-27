@@ -6,3 +6,4 @@ xgboost
 imblearn
 matplotlib
 jupyter
+itables
